@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Worst Toolkit — molecular biology tools in one place</title>
+  <meta name="description" content="Everyday molecular biology tools that run entirely in your browser: sequence cleanup, DNA/RNA/protein conversion, ORF finding, primer Tm, restriction digest, pairwise alignment, cloning calculators — and a node editor to chain them together." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f6f5c' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M7 3c0 5 10 7 10 9s-10 4-10 9'/%3E%3Cpath d='M17 3c0 5-10 7-10 9s10 4 10 9'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#/">
+        <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M7 3c0 5 10 7 10 9s-10 4-10 9" /><path d="M17 3c0 5-10 7-10 9s10 4 10 9" />
+          <path d="M8.5 6h7M8.5 18h7M7.5 9h9M7.5 15h9" />
+        </svg>
+        worst<span class="slash">/</span><b>toolkit</b>
+      </a>
+      <nav class="nav-links">
+        <a href="#/" data-route="home">tools</a>
+        <a href="#/workflow" data-route="workflow">node editor</a>
+        <a href="#/docs" data-route="docs">docs</a>
+        <button class="theme-toggle" id="themeToggle" title="Switch light / dark">dark</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <!-- ===== Scripts: core → tools (self-register) → editor → app =========== -->
+  <script src="assets/js/core/registry.js"></script>
+  <script src="assets/js/core/bioseq.js"></script>
+  <script src="assets/js/core/ui.js"></script>
+  <script src="assets/js/core/logger.js"></script>
+  <!-- Cleanup & Format -->
+  <script src="assets/js/tools/clean-sequence.js"></script>
+  <script src="assets/js/tools/find-replace.js"></script>
+  <script src="assets/js/tools/text-lines.js"></script>
+  <script src="assets/js/tools/diff.js"></script>
+  <script src="assets/js/tools/scratchpad.js"></script>
+  <!-- Sequence Tools -->
+  <script src="assets/js/tools/strand-view.js"></script>
+  <script src="assets/js/tools/sequence-converter.js"></script>
+  <script src="assets/js/tools/reading-frames.js"></script>
+  <script src="assets/js/tools/revcomp-check.js"></script>
+  <script src="assets/js/tools/sequence-find.js"></script>
+  <script src="assets/js/tools/degenerate-bases.js"></script>
+  <script src="assets/js/tools/join-sequences.js"></script>
+  <script src="assets/js/tools/sequence-stats.js"></script>
+  <script src="assets/js/tools/tm-calculator.js"></script>
+  <!-- Calculators -->
+  <script src="assets/js/tools/dilution-calculator.js"></script>
+  <script src="assets/js/tools/ligation-calculator.js"></script>
+  <script src="assets/js/tools/mass-moles.js"></script>
+  <script src="assets/js/tools/gibson.js"></script>
+  <script src="assets/js/tools/master-mix.js"></script>
+  <script src="assets/js/tools/number-math.js"></script>
+  <!-- node editor + app shell -->
+  <script src="assets/js/workflow/workflow.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
