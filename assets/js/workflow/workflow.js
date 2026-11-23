@@ -133,7 +133,7 @@
       btns.push(ab);
     }
     var rs = el('button', { class: 'wf-node-btn', type: 'button', title: 'Reset size to default' }, '↺');
-    rs.addEventListener('mousedown', function (e) { e.stopPropagation(); }); rs.addEventListener('click', function (e) { e.stopPropagation(); snapshot(); node.width = null; node.outH = null; node.fontScale = null; node.fieldHeights = {}; rebuildAll(); scheduleSave(); log('Reset node size'); }); btns.push(rs);
+    rs.addEventListener('mousedown', function (e) { e.stopPropagation(); }); rs.addEventListener('click', function (e) { e.stopPropagation(); snapshot(); node.width = null; node.outH = null; node.fontScale = null; node.fieldHeights = {}; node.fieldWidths = {}; rebuildAll(); scheduleSave(); log('Reset node size'); }); btns.push(rs);
     var del = el('button', { class: 'wf-node-del', type: 'button', title: 'Delete node' }, '×');
     del.addEventListener('mousedown', function (e) { e.stopPropagation(); }); del.addEventListener('click', function (e) { e.stopPropagation(); snapshot(); removeNode(node.id); rebuildAll(); log('Removed node'); }); btns.push(del);
     return el('div', { class: 'wf-node-head' }, [el('span', { class: 'cat-dot' }), el('span', { class: 'title' }, title)].concat(btns));
@@ -147,11 +147,17 @@
     if (def && def.onInput) { def.onInput(inp.name, node.values); Object.keys(node._allCtl).forEach(function (nm) { if (nm !== inp.name) ui.setControlValue(node._allCtl[nm], node.values[nm]); }); }
     onValueEdit();
   }
-  function grip(node, field, key, label) {
+  function sizedField(node, field, key, label) {
     node.fieldHeights = node.fieldHeights || {};
-    return ui.fieldGrip(field, {label: label, height: node.fieldHeights[key], scale: function () { return scale; },
-      change: function (height) {
-        if (height == null) delete node.fieldHeights[key]; else node.fieldHeights[key] = height;
+    node.fieldWidths = node.fieldWidths || {};
+    function remember(map, value) {
+      if (value === null) delete map[key];
+      else if (value !== undefined) map[key] = value;
+    }
+    return ui.resizableField(field, {label: label, width: node.fieldWidths[key], height: node.fieldHeights[key],
+      scale: function () { return scale; }, defaultHeight: function () { return node.outH; },
+      change: function (width, height) {
+        remember(node.fieldWidths, width); remember(node.fieldHeights, height);
         redrawWires(); scheduleSave();
       }});
   }
@@ -172,10 +178,10 @@
       box.appendChild(nodeHead(node, 'Note'));
       var ta = el('textarea', { placeholder: 'Comment…', spellcheck: 'false' }); ta.value = node.note || '';
       ta.addEventListener('input', function () { beginEdit(); node.note = ta.value; scheduleSave(); });
-      box.appendChild(ta); node._growEls.push({ el: ta, prop: 'height' });
+      node._growEls.push({ el: ta, prop: 'height' });
       if (node.outH) ta.style.height = node.outH + 'px';
-      box.appendChild(grip(node, ta, 'note', 'note'));
-      addResizeHandles(box, node); world.appendChild(box); return;
+      box.appendChild(sizedField(node, ta, 'note', 'note'));
+      addResizeHandles(box, node); world.appendChild(box); ui.fitFieldWidths(box); return;
     }
 
     box.appendChild(nodeHead(node, def.name));
@@ -196,7 +202,8 @@
         else if (ctl.__edit) { node._growEls.push({ el: ctl.__edit, prop: 'height' }); if (node.outH) ctl.__edit.style.height = node.outH + 'px'; }
         var reqMark = inp.required ? el('span', { class: 'wf-req', title: 'Required' }, '*') : null;
         var labelEl = el('label', { class: 'wf-port-label', for: ctl.id }, [inp.label || inp.name, reqMark, inp.socket ? typeTag(inp.type) : null]);
-        var cell = el('div', { class: 'wf-cell', title: fieldTip(inp) }, [labelEl, ctl, inp.control === 'textarea' || ctl.__edit ? grip(node, ctl.__edit || ctl, 'in-' + inp.name, inp.label) : null]);
+        var editor = inp.control === 'textarea' || ctl.__edit ? sizedField(node, ctl, 'in-' + inp.name, inp.label) : ctl;
+        var cell = el('div', { class: 'wf-cell', title: fieldTip(inp) }, [labelEl, editor]);
         if (inp.control === 'textarea') {
           var range = ui.rangeCopy(function () { return ctl.value; }, inp.label); cell.appendChild(range); node._ranges.push(range);
         }
@@ -224,6 +231,7 @@
         : out.type === 'html' ? el('div', { class: 'wf-out-val out-html' })
         : out.type === 'number' ? el('div', { class: 'wf-out-val wf-out-num empty' }, '—')
         : el('div', { class: 'wf-out-val empty' }, '—');
+      if (out.renderText) { valEl.classList.add('out-html'); valEl._renderText = out.renderText; }
       if (growable) { if (node.outH) { valEl.style.height = node.outH + 'px'; valEl.style.maxHeight = 'none'; } node._growEls.push({ el: valEl, prop: 'height' }); }
       node._outEls[out.name] = valEl; node._outKinds[out.name] = out.type;
       var getText = function () { var v = node.outputs[out.name]; return out.type === 'table' ? ui.tableToText(v) : out.type === 'html' ? valEl.textContent : stringify(v); };
@@ -231,8 +239,7 @@
       if (viewer) { valEl._viewer = viewer; getText = function () { return node.outputs.view ? node.outputs.view.seq : ''; }; }
       row.appendChild(el('div', { class: 'wf-out-head' }, [el('span', { class: 'wf-port-label' }, [typeTag(out.type), out.label || out.name]), ui.copyButton(getText)]));
       if (viewer) row.appendChild(viewer.bar);
-      row.appendChild(valEl);
-      if (growable) row.appendChild(grip(node, valEl, 'out-' + out.name, out.label));
+      row.appendChild(growable ? sizedField(node, valEl, 'out-' + out.name, out.label) : valEl);
       if (out.type === 'text' || viewer) {
         var range = ui.rangeCopy(getText, out.label); row.appendChild(range); node._ranges.push(range);
       }
@@ -260,7 +267,7 @@
 
     box.appendChild(body);
     addResizeHandles(box, node);
-    world.appendChild(box);
+    world.appendChild(box); ui.fitFieldWidths(box);
   }
   function updateNodeVisibility(node) {
     if (!node._cells) return;
@@ -284,6 +291,10 @@
         var kind = node._outKinds ? node._outKinds[name] : 'text', v = node.outputs ? node.outputs[name] : '', e = node._outEls[name];
         if (node._error) { e.textContent = node._error; delete e._last; return; }
         if (e._viewer) { e._viewer.update(node.outputs && node.outputs.view); return; }
+        if (e._renderText) {
+          if (node.outputs !== e._last) { e._renderText(e, node.outputs); e._last = node.outputs; e.classList.toggle('empty', !v); }
+          return;
+        }
         if (Object.prototype.hasOwnProperty.call(e, '_last') && Object.is(e._last, v)) return;
         e._last = v;
         if (kind === 'table') ui.renderTableInto(e, v);
@@ -331,7 +342,7 @@
     var notes = Object.keys(graph.nodes).map(function (k) { return graph.nodes[k]; }).filter(function (n) { return n.toolId === '__note__' && n.anchor && selected[n.anchor] && !selected[n.id]; });
     drag = { mode: 'node', origins: movers.concat(notes).map(function (n) { return { node: n, ox: n.x, oy: n.y }; }), sx: e.clientX, sy: e.clientY, moved: false, single: node };
   }
-  function startResize(node, e, dir) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); setSelection([node.id]); drag = { mode: 'resize', node: node, dir: dir, sx: e.clientX, sy: e.clientY, ox: node.x, oy: node.y, ow: node.width || (node._box ? node._box.offsetWidth : DEFAULT_W), oh: node.outH || DEFAULT_OUTH, moved: false }; }
+  function startResize(node, e, dir) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); setSelection([node.id]); drag = { mode: 'resize', node: node, dir: dir, sx: e.clientX, sy: e.clientY, ox: node.x, oy: node.y, ow: node._box.offsetWidth || node.width || DEFAULT_W, oh: node.outH || DEFAULT_OUTH, moved: false }; }
   function startPan(e) { drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, opx: panX, opy: panY }; canvas.classList.add('panning'); }
   function startWireDrag(portEl) { drag = { mode: 'wire', fromNode: portEl.dataset.node, fromPort: portEl.dataset.port, fromType: portEl.dataset.type, fromEl: portEl }; tempPath.style.display = ''; tempPath.setAttribute('class', 'wf-wire wf-wire-temp ' + portEl.dataset.type); }
   function onPortDown(e) { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (this.dataset.io === 'out') { startWireDrag(this); return; } var w = incomingWire(this.dataset.node, this.dataset.port); if (w) { var fn = w.from.node, fp = w.from.port; snapshot(); bakeInput(w.to.node, w.to.port); removeWire(w.id); rebuildAll(); var src = findPortEl(fn, 'out', fp); if (src) startWireDrag(src); } }
@@ -346,10 +357,15 @@
     } else if (drag.mode === 'resize') {
       if (!drag.moved) { snapshot(); drag.moved = true; }
       var dx = (e.clientX - drag.sx) / scale, dy = (e.clientY - drag.sy) / scale, dir = drag.dir, n = drag.node;
-      if (dir.indexOf('e') >= 0) n.width = clamp(drag.ow + dx, 180, 1000);
-      if (dir.indexOf('w') >= 0) { var w = clamp(drag.ow - dx, 180, 1000); n.x = drag.ox + (drag.ow - w); n.width = w; }
+      if (dir.indexOf('e') >= 0) n.width = clamp(drag.ow + dx, 180, 2600);
+      if (dir.indexOf('w') >= 0) { var w = clamp(drag.ow - dx, 180, 2600); n.x = drag.ox + (drag.ow - w); n.width = w; }
       if (dir.indexOf('s') >= 0) n.outH = clamp(drag.oh + dy, 40, 1400);
       if (dir.indexOf('n') >= 0) { var h = clamp(drag.oh - dy, 40, 1400); n.y = drag.oy + (drag.oh - h); n.outH = h; }
+      if (/[ew]/.test(dir) && dx && Object.keys(n.fieldWidths || {}).length) {
+        n.fieldWidths = {};
+        n._box.querySelectorAll('.resizable-field').forEach(function (field) { field.style.width = ''; });
+        ui.fitFieldWidths(n._box);
+      }
       if (n.width) n._box.style.width = n.width + 'px';
       n._box.style.left = n.x + 'px'; n._box.style.top = n.y + 'px';
       if (n.outH && /[ns]/.test(dir)) {
@@ -384,7 +400,7 @@
     if (!clipboard || !clipboard.nodes.length) return;
     snapshot(); var map = {}, newIds = [];
     clipboard.nodes.forEach(function (n) { map[n.id] = uid('n'); });
-    clipboard.nodes.forEach(function (n) { var nn = { id: map[n.id], toolId: n.toolId, x: (n.x || 0) + 34, y: (n.y || 0) + 34, values: JSON.parse(JSON.stringify(n.values || {})), note: n.note || '', anchor: (n.anchor && map[n.anchor]) ? map[n.anchor] : null, dx: n.dx || 0, dy: n.dy || 0, width: n.width || null, outH: n.outH || null, fontScale: n.fontScale || null, fieldHeights: Object.assign({}, n.fieldHeights), outputs: {} }; graph.nodes[nn.id] = nn; newIds.push(nn.id); });
+    clipboard.nodes.forEach(function (n) { var nn = { id: map[n.id], toolId: n.toolId, x: (n.x || 0) + 34, y: (n.y || 0) + 34, values: JSON.parse(JSON.stringify(n.values || {})), note: n.note || '', anchor: (n.anchor && map[n.anchor]) ? map[n.anchor] : null, dx: n.dx || 0, dy: n.dy || 0, width: n.width || null, outH: n.outH || null, fontScale: n.fontScale || null, fieldHeights: Object.assign({}, n.fieldHeights), fieldWidths: Object.assign({}, n.fieldWidths), outputs: {} }; graph.nodes[nn.id] = nn; newIds.push(nn.id); });
     clipboard.wires.forEach(function (w) { if (map[w.from.node] && map[w.to.node]) graph.wires.push({ id: uid('w'), from: { node: map[w.from.node], port: w.from.port }, to: { node: map[w.to.node], port: w.to.port }, type: w.type }); });
     setSelection(newIds); rebuildAll(); scheduleSave(); log('Pasted ' + newIds.length + ' node(s)');
   }
@@ -430,7 +446,7 @@
   }
 
   /* ---- persistence ------------------------------------------------------- */
-  function serNode(n) { return { id: n.id, toolId: n.toolId, x: n.x, y: n.y, values: n.values, note: n.note, anchor: n.anchor, dx: n.dx, dy: n.dy, width: n.width, outH: n.outH, fontScale: n.fontScale, fieldHeights: n.fieldHeights }; }
+  function serNode(n) { return { id: n.id, toolId: n.toolId, x: n.x, y: n.y, values: n.values, note: n.note, anchor: n.anchor, dx: n.dx, dy: n.dy, width: n.width, outH: n.outH, fontScale: n.fontScale, fieldHeights: n.fieldHeights, fieldWidths: n.fieldWidths }; }
   function serializeGraph() { return { nextId: nextId, nodes: Object.keys(graph.nodes).map(function (id) { return serNode(graph.nodes[id]); }), wires: graph.wires.map(function (w) { return { id: w.id, from: w.from, to: w.to, type: w.type }; }) }; }
   function serializeFull() { var g = serializeGraph(); g.panX = panX; g.panY = panY; g.scale = scale; return g; }
   function prepareGraph(data) {
@@ -453,7 +469,7 @@
       }
       var node = {id: n.id, toolId: toolId, x: Number(n.x) || 0, y: Number(n.y) || 0, values: values,
         note: n.note || '', anchor: n.anchor || null, dx: Number(n.dx) || 0, dy: Number(n.dy) || 0,
-        width: n.width || null, outH: n.outH || null, fontScale: n.fontScale || null, fieldHeights: Object.assign({}, n.fieldHeights), outputs: {}};
+        width: n.width || null, outH: n.outH || null, fontScale: n.fontScale || null, fieldHeights: Object.assign({}, n.fieldHeights), fieldWidths: Object.assign({}, n.fieldWidths), outputs: {}};
       var def = getDef(node);
       if (toolId !== '__note__' && (!def || (def.group && def.group !== GROUP))) throw Error('Unrecognized node for this canvas: ' + toolId);
       if (def) def.inputs.forEach(function (i) { if (!Object.hasOwn(values, i.name)) values[i.name] = ui.defaultValue(i); });
@@ -582,7 +598,7 @@
   }
   function outsideMenu(e) { if (!e.target.closest('#wfAddMenu')) closeAddMenu(); }
   function closeAddMenu() { var m = document.getElementById('wfAddMenu'); if (m) m.remove(); document.removeEventListener('mousedown', outsideMenu); }
-  var SHORTCUTS = [['Space', 'Add-node menu at the cursor (type to search)'], ['F', 'Fit all nodes in view'], ['X / Delete', 'Delete selected node(s)'], ['Click a node', 'Select it (drag any border to resize)'], ['Shift + click', 'Add / remove from selection'], ['Ctrl + C / V', 'Copy / paste nodes (text if selected)'], ['Ctrl + A', 'Select all'], ['Ctrl + Z / Y', 'Undo / redo'], ['Esc', 'Cancel “anchor note”'], ['Drag header / body', 'Move node(s)'], ['Select + drag a border', 'Resize the node (E/W width · N/S box height)'], ['Drag output→input', 'Connect (matching type)'], ['Click a wire', 'Remove connection'], ['Output fields', 'Drag to select text. Use Copy for the whole output.'], ['Field grip', 'Drag to resize a single field, double-click to reset'], ['Scroll', 'Zoom (or scroll a scrollable box)'], ['Ctrl + Scroll', 'Zoom the text in a node box (↺ resets)'], ['Middle-drag', 'Pan the canvas'], ['Drop a .json', 'Import a workflow']];
+  var SHORTCUTS = [['Space', 'Add-node menu at the cursor (type to search)'], ['F', 'Fit all nodes in view'], ['X / Delete', 'Delete selected node(s)'], ['Click a node', 'Select it (drag any border to resize)'], ['Shift + click', 'Add / remove from selection'], ['Ctrl + C / V', 'Copy / paste nodes (text if selected)'], ['Ctrl + A', 'Select all'], ['Ctrl + Z / Y', 'Undo / redo'], ['Esc', 'Cancel “anchor note”'], ['Drag header / body', 'Move node(s)'], ['Select + drag a border', 'Resize the node (E/W width · N/S box height)'], ['Drag output→input', 'Connect (matching type)'], ['Click a wire', 'Remove connection'], ['Output fields', 'Drag to select text. Use Copy for the whole output.'], ['Field grip', 'Drag the bottom-right corner to resize width and height. Double-click to reset'], ['Scroll', 'Zoom (or scroll a scrollable box)'], ['Ctrl + Scroll', 'Zoom the text in a node box (↺ resets)'], ['Middle-drag', 'Pan the canvas'], ['Drop a .json', 'Import a workflow']];
   function toggleShortcuts() { var ex = document.getElementById('wfShortcuts'); if (ex) { ex.remove(); return; } document.body.appendChild(el('div', { class: 'wf-shortcuts', id: 'wfShortcuts' }, [el('div', { class: 'wf-shortcuts-title' }, 'Keyboard & mouse')].concat(SHORTCUTS.map(function (s) { return el('div', { class: 'wf-shortcut-row' }, [el('span', { class: 'kbd' }, s[0]), el('span', null, s[1])]); })))); }
   function exportJson() { var blob = new Blob([JSON.stringify(serializeFull(), null, 2)], { type: 'application/json' }); var name = (store.projects[currentId] && store.projects[currentId].name || 'workflow').replace(/[^\w-]+/g, '_'); var a = el('a', { href: URL.createObjectURL(blob), download: 'molbio-' + name + '.json' }); document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000); log('Exported workspace JSON'); }
   function importFile(f) { if (!f) return; var fr = new FileReader(); fr.onload = function () { try { var d = JSON.parse(fr.result); prepareGraph(d); snapshot(); loadGraph(d); loadView(d); rebuildAll(); applyTransform(); scheduleSave(); log('Imported workflow: ' + (f.name || 'file')); } catch (e) { if (MBT.log) MBT.log.error('Import failed: ' + e.message); alert('Could not import workspace. ' + e.message); } }; fr.readAsText(f); }

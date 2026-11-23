@@ -148,7 +148,8 @@ window.MBT = window.MBT || {};
       var rowEl = ui.el('div', { class: 'field-row' });
       rowInputs.forEach(function (inp) {
         var ctl = ui.control(inp, values[inp.name], function (v) { onChange(inp, v); });
-        var f = ui.el('div', { class: 'field field-' + inp.control }, [ui.label(inp, ctl), ctl, inp.control === 'textarea' || ctl.__edit ? ui.fieldGrip(ctl.__edit || ctl, {label: inp.label}) : null, inp.hint ? ui.el('div', { class: 'field-hint' }, inp.hint) : null]);
+        var editor = inp.control === 'textarea' || ctl.__edit ? ui.resizableField(ctl, {label: inp.label}) : ctl;
+        var f = ui.el('div', { class: 'field field-' + inp.control }, [ui.label(inp, ctl), editor, inp.hint ? ui.el('div', { class: 'field-hint' }, inp.hint) : null]);
         if (inp.control === 'textarea') {
           var range = ui.rangeCopy(function () { return ctl.value; }, inp.label); f.appendChild(range); rangePanels.push(range);
         }
@@ -164,7 +165,12 @@ window.MBT = window.MBT || {};
     if (tool.controls) refreshControls = tool.controls(inputsWrap, function () { return values; }, function (name, value) { values[name] = value; recompute(); });
     tool.outputs.forEach(function (out) {
       var valueEl, getText, setter, lastTable = null;
-      if (out.type === 'number') { valueEl = ui.el('div', { class: 'out-number' }, '—'); getText = function () { return valueEl.textContent; }; setter = function (v, err) { var blank = (v === '' || v == null || (typeof v === 'number' && isNaN(v))); valueEl.textContent = err ? ('⚠ ' + err) : (blank ? '—' : v); }; }
+      if (out.renderText) {
+        valueEl = ui.el('div', {class: 'out-html mono', role: 'region', tabindex: '0'});
+        getText = function () { return valueEl.textContent; };
+        setter = function (v, err, outputs) { if (err) valueEl.textContent = err; else out.renderText(valueEl, outputs); };
+      }
+      else if (out.type === 'number') { valueEl = ui.el('div', { class: 'out-number' }, '—'); getText = function () { return valueEl.textContent; }; setter = function (v, err) { var blank = (v === '' || v == null || (typeof v === 'number' && isNaN(v))); valueEl.textContent = err ? ('⚠ ' + err) : (blank ? '—' : v); }; }
       else if (out.type === 'table') { valueEl = ui.el('div', { class: 'out-table-wrap' }); getText = function () { return ui.tableToText(lastTable); }; setter = function (v, err) { if (err) { ui.clear(valueEl); valueEl.appendChild(document.createTextNode('⚠ ' + err)); } else { lastTable = v; ui.renderTableInto(valueEl, v); } }; }
       else if (out.type === 'html') { valueEl = ui.el('div', { class: 'out-html' }); getText = function () { return valueEl.textContent; }; setter = function (v, err) { if (err) valueEl.textContent = '⚠ ' + err; else ui.renderHtmlInto(valueEl, v); }; }
       else { valueEl = ui.el('textarea', { class: 'out-text mono', readonly: 'readonly', rows: 5, spellcheck: 'false' }); getText = function () { return valueEl.value; }; setter = function (v, err) { valueEl.value = err ? ('⚠ ' + err) : (v == null ? '' : v); }; }
@@ -175,10 +181,10 @@ window.MBT = window.MBT || {};
       if (viewer) valueEl.title = 'Sequence context. The main Copy button copies the full sequence.';
       outputsWrap.appendChild(ui.el('div', {class: 'output'}, [
         ui.el('div', {class: 'output-head'}, [ui.el('span', {class: 'output-label'}, out.label || out.name), ui.copyButton(getText)]),
-        viewer ? viewer.bar : null, valueEl, out.type !== 'number' ? ui.fieldGrip(valueEl, {label: out.label}) : null, range]));
+        viewer ? viewer.bar : null, out.type !== 'number' ? ui.resizableField(valueEl, {label: out.label}) : valueEl, range]));
       outputViews[out.name] = {set: function (v, err, outputs) {
         if (viewer) { var data = outputs && outputs.view; this.sequence = data && data.seq; viewer.update(data); }
-        else setter(v, err);
+        else setter(v, err, outputs);
         if (range) range.update();
       }};
     });

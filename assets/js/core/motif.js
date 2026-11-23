@@ -59,11 +59,16 @@
     return {seq: seq, query: query, hits: hits, count: count};
   }
 
-  function extract(seq, hit, before, after) {
-    var rev = hit.strand === '-';
+  function flankWindow(hit, before, after, orientation) {
+    var reverse = orientation !== 'reference' && hit.strand === '-';
+    return {start: hit.start - (reverse ? after : before), end: hit.end + (reverse ? before : after), reverse: reverse};
+  }
+
+  function extract(seq, hit, before, after, orientation) {
+    var window = flankWindow(hit, before, after, orientation), rev = window.reverse;
     function orient(s) { return rev ? Bio.reverseComplement(s) : s; }
-    var left = seq.slice(Math.max(0, hit.start - (rev ? after : before)), hit.start);
-    var right = seq.slice(hit.end, hit.end + (rev ? before : after));
+    var left = seq.slice(Math.max(0, window.start), hit.start);
+    var right = seq.slice(hit.end, window.end);
     var upstream = orient(rev ? right : left), downstream = orient(rev ? left : right);
     var match = orient(seq.slice(hit.start, hit.end));
     return {upstream: upstream, downstream: downstream, match: match, region: upstream + match + downstream};
@@ -80,5 +85,5 @@
     });
     close(); parts.push(data.seq.slice(end)); return parts.join('');
   }
-  MBT.motif = {parse: parse, scan: scan, extract: extract, highlight: highlight};
+  MBT.motif = {parse: parse, scan: scan, flankWindow: flankWindow, extract: extract, highlight: highlight};
 })(window.MBT);

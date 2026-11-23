@@ -2,39 +2,81 @@
   'use strict';
   var el = ui.el;
 
-  // A separate grip leaves the editor's native text-selection behavior intact.
-  ui.fieldGrip = function (box, options) {
+  // Reserve room for the widest customized field, including its row and panel padding.
+  function horizontalInsets(field, container) {
+    var sum = 0;
+    for (var p = field.parentElement; p; p = p.parentElement) {
+      var style = getComputedStyle(p);
+      ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].forEach(function (key) {
+        sum += parseFloat(style[key]) || 0;
+      });
+      if (p === container) break;
+    }
+    return Math.ceil(sum);
+  }
+  ui.fitFieldWidths = function (container) {
+    if (!container) return;
+    var minimum = 0;
+    container.querySelectorAll('.resizable-field').forEach(function (field) {
+      if (field.style.width) minimum = Math.max(minimum, parseFloat(field.style.width) + horizontalInsets(field, container));
+    });
+    if (minimum) container.style.setProperty('--field-min-width', minimum + 'px');
+    else container.style.removeProperty('--field-min-width');
+  };
+
+  ui.resizableField = function (content, options) {
     options = options || {};
+    var box = content.__edit || content;
     var label = 'Resize ' + (options.label || 'field');
     var grip = el('button', {type: 'button', class: 'field-grip', 'aria-label': label,
-      title: label + '. Drag vertically, use the up and down keys, or double-click to reset.'});
-    var initialHeight = box.style.height, initialMax = box.style.maxHeight;
-    function apply(h) {
-      if (h == null) {
-        box.style.height = initialHeight; box.style.maxHeight = initialMax;
-      } else {
-        h = Math.round(Math.max(40, Math.min(2400, h)));
-        box.style.maxHeight = 'none'; box.style.height = h + 'px';
+      title: label + '. Drag the corner in either direction or use the arrow keys. Double-click or press Home to reset.'});
+    var wrap = el('div', {class: 'resizable-field'}, [content, grip]);
+    function apply(width, height) {
+      var parent = wrap.closest('.wf-node, .panel');
+      // An undefined dimension was not dragged. A null dimension restores its default.
+      if (width !== undefined) {
+        if (width !== null) {
+          var grid = wrap.closest('.tool-grid');
+          var max = grid && grid.clientWidth ? grid.clientWidth - horizontalInsets(wrap, parent) : 2400;
+          width = Math.round(Math.max(80, Math.min(width, max)));
+        }
+        wrap.style.width = width === null ? '' : width + 'px';
+        ui.fitFieldWidths(parent);
       }
-      if (options.change) options.change(h);
+      if (height !== undefined) {
+        if (height !== null) { height = Math.round(Math.max(40, Math.min(2400, height))); box.classList.remove('fit'); }
+        var fallback = options.defaultHeight && options.defaultHeight();
+        box.style.height = height !== null ? height + 'px' : fallback ? fallback + 'px' : '';
+        box.style.maxHeight = box.style.height ? 'none' : '';
+      }
+      if (options.change) options.change(width, height);
     }
+    if (options.width) wrap.style.width = options.width + 'px';
     if (options.height) { box.style.maxHeight = 'none'; box.style.height = options.height + 'px'; }
     grip.addEventListener('pointerdown', function (event) {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || event.isPrimary === false) return;
       event.preventDefault(); event.stopPropagation();
-      var y = event.clientY, height = box.offsetHeight, scale = options.scale ? options.scale() : 1;
+      var x = event.clientX, y = event.clientY, width = wrap.offsetWidth, height = box.offsetHeight;
+      var scale = options.scale ? options.scale() : 1, changedX = false, changedY = false;
       grip.setPointerCapture(event.pointerId);
-      function move(e) { apply(height + (e.clientY - y) / scale); }
+      function move(e) {
+        if (e.pointerId !== event.pointerId) return;
+        var dx = (e.clientX - x) / scale, dy = (e.clientY - y) / scale;
+        changedX = changedX || dx !== 0; changedY = changedY || dy !== 0;
+        apply(changedX ? width + dx : undefined, changedY ? height + dy : undefined);
+      }
       function stop() { grip.removeEventListener('pointermove', move); grip.removeEventListener('lostpointercapture', stop); }
       grip.addEventListener('pointermove', move); grip.addEventListener('lostpointercapture', stop);
     });
-    grip.addEventListener('dblclick', function () { apply(null); });
+    grip.addEventListener('dblclick', function () { apply(null, null); });
     grip.addEventListener('keydown', function (e) {
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault(); apply(box.offsetHeight + (e.key === 'ArrowUp' ? -24 : 24));
-      } else if (e.key === 'Home') { e.preventDefault(); apply(null); }
+      if (e.key === 'Home') apply(null, null);
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') apply(undefined, box.offsetHeight + (e.key === 'ArrowUp' ? -24 : 24));
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') apply(wrap.offsetWidth + (e.key === 'ArrowLeft' ? -24 : 24), undefined);
+      else return;
+      e.preventDefault(); e.stopPropagation();
     });
-    return grip;
+    return wrap;
   };
 
   ui.rangeCopy = function (read, label) {
